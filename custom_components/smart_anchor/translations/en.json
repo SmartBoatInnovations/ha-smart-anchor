@@ -1,0 +1,37 @@
+{
+    "title": "Smart Anchor",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configure Smart Anchor",
+                "data": {
+                    "latitude_entity": "Latitude Sensor Entity",
+                    "longitude_entity": "Longitude Sensor Entity",
+                    "default_radius": "Default Radius (meters)",
+                    "heading_entity": "Heading Sensor Entity (optional)",
+                    "distance_to_bow": "Distance to Bow (optional)"
+                }
+            }
+        },
+        "error": {
+            "single_instance_allowed": "Only one instance of Smart Anchor can be configured."
+        },
+        "abort": {
+            "single_instance_allowed": "Smart Anchor is already configured and does not support multiple instances."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Update Smart Anchor Settings",
+                "data": {
+                    "latitude_entity": "Latitude Sensor Entity",
+                    "longitude_entity": "Longitude Sensor Entity",
+                    "default_radius": "Default Radius (meters)",
+                    "heading_entity": "Heading Sensor Entity (optional)",
+                    "distance_to_bow": "Distance to Bow (optional)"
+                }
+            }
+        }
+    }
+}
