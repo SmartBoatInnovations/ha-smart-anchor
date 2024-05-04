@@ -1,11 +1,11 @@
-# services.yaml
-set_anchor:
-  description: Set the anchor position and optional radius.
+drop_anchor:
+  description: "Sets the anchor position and optional radius."
   fields:
     radius:
-      description: The radius in meters around the anchor within which movements are allowed. If not specified, the default or previously set value will be used.
-      example: 40
+      description: "Anchor Zone Radius in meters. If not specified, a default value will be used."
+      example: 30
       required: false
 
 lift_anchor:
-  description: Lift the anchor, deletes Anchor Zone. no parameters needed.
+  description: "Lifts the anchor, which deletes the Anchor Zone."
+  fields: {}

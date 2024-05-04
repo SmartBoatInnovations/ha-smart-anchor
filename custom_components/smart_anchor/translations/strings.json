@@ -9,7 +9,7 @@
                     "longitude_entity": "Longitude Sensor Entity",
                     "default_radius": "Default Radius (meters)",
                     "heading_entity": "Heading Sensor Entity (optional)",
-                    "distance_to_bow": "Distance to Bow (optional)"
+                    "distance_to_bow": "Distance to Bow (meters) (optional)"
                 }
             }
         },
@@ -29,7 +29,7 @@
                     "longitude_entity": "Longitude Sensor Entity",
                     "default_radius": "Default Radius (meters)",
                     "heading_entity": "Heading Sensor Entity (optional)",
-                    "distance_to_bow": "Distance to Bow (optional)"
+                    "distance_to_bow": "Distance to Bow (meters) (optional)"
                 }
             }
         }
