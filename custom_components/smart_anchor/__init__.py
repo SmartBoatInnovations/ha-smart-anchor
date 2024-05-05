@@ -19,24 +19,42 @@ async def async_setup(hass: HomeAssistant, config: dict):
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    _LOGGER.debug("Setting up Smart_Anchor integration entry: %s", entry.as_dict())
+    _LOGGER.debug("Starting setup for Smart_Anchor integration with entry: %s", entry.as_dict())
+
+    # Ensure the DOMAIN data container exists
     hass.data.setdefault(DOMAIN, {})
+    _LOGGER.debug("Data container for domain initialized")
 
-    # Register the update listener
-    entry.async_on_unload(entry.add_update_listener(update_listener))
+    # Register the update listener and log this action
+    unload_handle = entry.add_update_listener(update_listener)
+    entry.async_on_unload(unload_handle)
+    _LOGGER.debug("Update listener registered for Smart_Anchor integration")
 
+    # Save the configuration entry to hass.data for quick access
     hass.data[DOMAIN][entry.entry_id] = entry.data
-    # Forward the setup to the sensor platform
+    _LOGGER.debug("Configuration entry saved: %s", entry.data)
+
+    # Forward the setup to the device_tracker platform
+    _LOGGER.debug("Forwarding setup to device_tracker platform")
     hass.async_create_task(
         hass.config_entries.async_forward_entry_setup(entry, "device_tracker")
     )
-    _LOGGER.debug("Smart_Anchor entry setup completed successfully and update listener registered")
+
+    _LOGGER.debug("Setup for Smart_Anchor integration completed successfully")
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    _LOGGER.debug("Unloading Smart_Anchor integration entry: %s", entry.as_dict())
-    hass.data[DOMAIN].pop(entry.entry_id)
-    await hass.config_entries.async_forward_entry_unload(entry, "device_tracker")
-    _LOGGER.debug("Smart_Anchor entry unloaded successfully")
-    return True
+    _LOGGER.debug("Starting unload for Smart_Anchor integration with entry: %s", entry.as_dict())
 
+    # Remove the entry from DOMAIN data container
+    if entry.entry_id in hass.data[DOMAIN]:
+        hass.data[DOMAIN].pop(entry.entry_id)
+        _LOGGER.debug("Entry removed from domain data container")
+
+    # Forward the unload to the device_tracker platform and await its completion
+    _LOGGER.debug("Forwarding unload to device_tracker platform")
+    result = await hass.config_entries.async_forward_entry_unload(entry, "device_tracker")
+    _LOGGER.debug("Unload forwarded to device_tracker platform with result: %s", result)
+
+    _LOGGER.debug("Unload for Smart_Anchor integration completed successfully")
+    return True

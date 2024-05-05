@@ -1,10 +1,15 @@
 # custom_components/smart_anchor/config_flow.py
 import voluptuous as vol
+import logging
+
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 DOMAIN = "smart_anchor"
+
+_LOGGER = logging.getLogger(__name__)
+
 
 class SmartAnchorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -61,10 +66,23 @@ class SmartAnchorOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
-            # Merge user_input with existing config entry data
-            updated_data = {**self.config_entry.data, **user_input}
-            self.hass.config_entries.async_update_entry(self.config_entry, data=updated_data)
-            return self.async_create_entry(title="", data=user_input)
+            _LOGGER.debug("Processing user input")
+    
+            _LOGGER.debug("Received user_input: %s", user_input)
+    
+            new_data = {**self.config_entry.data, **user_input}
+            _LOGGER.debug("New data after processing user_input: %s", new_data)
+    
+            # Update the config entry with new data.
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data=new_data
+            )
+            
+            _LOGGER.debug("data updated with user input. New data: %s", new_data)
+            
+            return self.async_create_entry(title="", data=None)
+
 
         schema = vol.Schema({
             vol.Required("latitude_entity", default=self.config_entry.data.get("latitude_entity")): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),

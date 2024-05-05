@@ -56,24 +56,23 @@ async def delete_anchor_zone(hass: HomeAssistant):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     
-    _LOGGER.debug("In async_setup_entry.")
+    async def handle_lift_anchor(call):
+        """Handle the lift_anchor service call."""
+        _LOGGER.debug("Lift Anchor Service.")
 
-    setup_or_update_config(hass, entry)
-    
-    entry.async_on_unload(entry.add_update_listener(update_listener))
-       
-    hass.data[DOMAIN]['ha_location_cancellation'] = await setup_periodic_location_updates(
-        hass, 
-        hass.data[DOMAIN]["latitude_entity"], 
-        hass.data[DOMAIN]["longitude_entity"]
-    )
+        await delete_anchor_zone(hass)     
+        _LOGGER.info("Lift anchor service processed.")
 
-     # Save a reference to the add_entities callback
-    hass.data[DOMAIN]["async_add_entities"] = async_add_entities
 
-    _LOGGER.debug("Periodic location HA update started.")
-   
-           
+    async def handle_update_anchor_zone(call):
+        """Handle the update_anchor_zone service call."""
+        _LOGGER.debug("Update Anchor Zone Service.")
+        
+        radius = call.data.get('radius')
+
+        await update_zone_radius(hass,"zone.anchor_zone", radius)     
+        
+        _LOGGER.info("Update Anchor Zone service processed.")
 
 
     async def handle_drop_anchor(call):
@@ -95,14 +94,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         distance_to_bow = hass.data[DOMAIN].get("distance_to_bow")        
         
         if not latitude_state or not longitude_state or latitude_state.state == 'unavailable' or longitude_state.state == 'unavailable':
-            _LOGGER.error("Latitude or longitude data is unavailable.")
+            _LOGGER.warning("Latitude or longitude data is unavailable.")
             return
 
         try:
             latitude = float(latitude_state.state)
             longitude = float(longitude_state.state)
         except ValueError as e:
-            _LOGGER.error(f"Error converting state to float: {e}")
+            _LOGGER.warning(f"Error converting state to float: {e}")
             return
 
         # Convert heading to float if it's available and not 'unavailable'
@@ -118,23 +117,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             _LOGGER.info(f"Anchor zone set at (Lat {latitude}, Lon {longitude}, heading {heading}, distance to bow {distance_to_bow}) with radius {radius} meters.")
             
         except Exception as e:
-            _LOGGER.error(f"Error creating zone: {e}")
+            _LOGGER.warning(f"Error creating zone: {e}")
             
     
         _LOGGER.info("Drop anchor service processed.")
 
 
-    async def handle_lift_anchor(call):
-        """Handle the lift_anchor service call."""
-        _LOGGER.debug("Lift Anchor Service.")
+    # async_setup_entry function starts here
+    
+    _LOGGER.debug("In async_setup_entry device_tracker.py.")
 
-        await delete_anchor_zone(hass)     
-        _LOGGER.info("Lift anchor service processed.")
+    setup_or_update_config(hass, entry)
+    
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+       
+    hass.data[DOMAIN]['ha_location_cancellation'] = await setup_periodic_location_updates(
+        hass, 
+        hass.data[DOMAIN]["latitude_entity"], 
+        hass.data[DOMAIN]["longitude_entity"]
+    )
 
+     # Save a reference to the add_entities callback
+    hass.data[DOMAIN]["async_add_entities"] = async_add_entities
+
+    _LOGGER.debug("Periodic location HA update started.")
 
     # Register the services
     hass.services.async_register(DOMAIN, "lift_anchor", handle_lift_anchor)
     hass.services.async_register(DOMAIN, "drop_anchor", handle_drop_anchor)
+    hass.services.async_register(DOMAIN, "update_anchor_zone", handle_update_anchor_zone)
 
     _LOGGER.debug("Smart Anchor services registered")
     _LOGGER.debug("Smart Anchor setup completed successfully")
@@ -152,7 +163,7 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry):
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle removal of an entry."""
     
-    _LOGGER.debug("In async_unload_entry.")
+    _LOGGER.debug("In async_unload_entry device_tracker.py.")
 
     try:
         if 'ha_location_cancellation' in hass.data[DOMAIN]:
@@ -194,7 +205,7 @@ async def handle_new_location_data(hass, latitude, longitude):
             domain_data[tracker_key] = new_tracker
             _LOGGER.info(f"Created new tracker entity: {tracker_key}")
     except Exception as e:
-        _LOGGER.error(f"Failed to update or create boat location tracker: {str(e)}")
+        _LOGGER.warning(f"Failed to update or create boat location tracker: {str(e)}")
         
 
 def rate_limited_error_log(message):
@@ -254,9 +265,13 @@ async def ensure_zone_collection_loaded(hass: HomeAssistant):
 async def create_zone(hass: HomeAssistant, name: str, latitude: float, longitude: float, radius: float, heading=None, distance_to_bow=None):
     """Create a zone in Home Assistant."""
     
+    _LOGGER.info(f"Original position  at GPS with latitude {latitude}, longitude {longitude}")
+
     if heading is not None and distance_to_bow is not None:
         latitude, longitude = calculate_new_position(latitude, longitude, heading, distance_to_bow)
-        _LOGGER.info(f"Bow position calculated heading {heading} and distance {distance_to_bow} meters.")
+        _LOGGER.info(f"Bow position calculated with heading {heading} and distance {distance_to_bow} meters.")
+        _LOGGER.info(f"New position calculated at bow with latitude {latitude}, longitude {longitude}")
+
     else:
         _LOGGER.info("No Bow position calculated.")
     
@@ -277,23 +292,38 @@ async def create_zone(hass: HomeAssistant, name: str, latitude: float, longitude
         await zone_collection.async_create_item(zone_info)
         _LOGGER.info(f"Zone '{name}' created successfully with latitude {latitude}, longitude {longitude}, and radius {radius}.")
     except Exception as e:
-        _LOGGER.error(f"Error creating zone '{name}': {e}")
+        _LOGGER.warning(f"Error creating zone '{name}': {e}")
         raise
 
 
+async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: float):
+    """Update the radius of an existing zone in Home Assistant."""
+    entity_registry = er.async_get(hass)
+    zone_entity = entity_registry.async_get(entity_id)
+
+    if not zone_entity:
+        _LOGGER.warning(f"Zone with entity_id '{entity_id}' not found")
+
+    await ensure_zone_collection_loaded(hass)
+    zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
+
+    # Prepare the update info with the new radius
+    zone_info = {'radius': new_radius}
+
+    try:
+        await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
+        _LOGGER.info(f"Zone '{entity_id}' updated successfully with new radius {new_radius}.")
+    except Exception as e:
+        _LOGGER.warning(f"Error updating the radius for zone '{entity_id}': {e}")
+        
+        
 async def update_zone(hass: HomeAssistant, entity_id: str, name: str = None, latitude: float = None, longitude: float = None, radius: float = None, icon: str = None, passive: bool = None):
     """Update or delete a zone in Home Assistant."""
     entity_registry = er.async_get(hass)
     zone_entity = entity_registry.async_get(entity_id)
 
     if not zone_entity:
-        _LOGGER.error(f"Zone with entity_id '{entity_id}' not found")
-        raise HomeAssistantError(f"Zone with entity_id '{entity_id}' not found")
-
-    # Check if the radius is zero to trigger deletion
-    if radius == 0:
-        await delete_zone(hass, zone_entity.unique_id)
-        return
+        _LOGGER.warning(f"Zone with entity_id '{entity_id}' not found")
 
     await ensure_zone_collection_loaded(hass)
     zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
@@ -317,8 +347,7 @@ async def update_zone(hass: HomeAssistant, entity_id: str, name: str = None, lat
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
         _LOGGER.info(f"Zone '{entity_id}' updated successfully.")
     except Exception as e:
-        _LOGGER.error(f"Error updating zone '{entity_id}': {e}")
-        raise HomeAssistantError(f"Error updating zone '{entity_id}': {e}")
+        _LOGGER.warning(f"Error updating zone '{entity_id}': {e}")
 
 
 async def delete_zone(hass: HomeAssistant, unique_id: str):
@@ -331,23 +360,10 @@ async def delete_zone(hass: HomeAssistant, unique_id: str):
         _LOGGER.info(f"Zone with ID '{unique_id}' deleted successfully.")
     except Exception as e:
         _LOGGER.warning(f"Error deleting zone with ID '{unique_id}': {e}")
-        raise HomeAssistantError(f"Error deleting zone with ID '{unique_id}': {e}")
 
 
 
 def calculate_new_position(latitude, longitude, heading, distance):
-    """
-    Calculate new latitude and longitude based on heading and distance, assuming a flat Earth.
-    
-    Parameters:
-    - latitude (float): The starting latitude
-    - longitude (float): The starting longitude
-    - heading (float): The heading in degrees (where 0 degrees is north, clockwise)
-    - distance (float): The distance to travel in meters
-
-    Returns:
-    - tuple: New latitude and longitude
-    """
     # Earth's radius at the equator in meters
     R = 6378137
     # Convert heading to radians
