@@ -40,6 +40,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.config_entries.async_forward_entry_setup(entry, "device_tracker")
     )
 
+    # Forward the setup to the number platform
+    _LOGGER.debug("Forwarding setup to number platform")
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, "number")
+    )
+
     _LOGGER.debug("Setup for Smart_Anchor integration completed successfully")
     return True
 

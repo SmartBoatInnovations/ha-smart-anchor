@@ -2,25 +2,34 @@
 
 import logging
 import math
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.components.zone import DOMAIN as ZONE_DOMAIN, ZoneStorageCollection
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
 from datetime import datetime, timedelta
 from homeassistant.components.device_tracker.config_entry import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change
+
 
 
 
 _LOGGER = logging.getLogger(__name__)
+
 
 # Set up a time threshold for logging the same error 
 ERROR_LOG_THRESHOLD = timedelta(minutes=10)
 last_error_log_time = None
 
 DOMAIN = "smart_anchor"
+ZONE_ID = "zone.anchor_zone"
+ZONE_NAME = "anchor_zone"
+HELPER_FIELD_ID = "anchor_zone_radius"
+HELPER_FIELD_ID_ENTITY = "number.anchor_zone_radius"
+
+
+
 
 def setup_or_update_config(hass: HomeAssistant, entry: ConfigEntry):
     """Set up or update the configuration data."""
@@ -40,13 +49,13 @@ def setup_or_update_config(hass: HomeAssistant, entry: ConfigEntry):
 
 async def delete_anchor_zone(hass: HomeAssistant):
     """Delete the anchor zone."""
-    zone_entity_id = "zone.anchor_zone"
+    zone_entity_id = ZONE_ID
     entity_reg = er.async_get(hass)
     zone_entity = entity_reg.async_get(zone_entity_id)
 
     if zone_entity:
         try:
-            await delete_zone(hass, "anchor_zone")
+            await delete_zone(hass, ZONE_NAME)
             _LOGGER.debug(f"Deleted existing zone: {zone_entity_id}")
         except Exception as e:
             _LOGGER.error(f"Error deleting zone: {e}")
@@ -70,7 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         
         radius = call.data.get('radius')
 
-        await update_zone_radius(hass,"zone.anchor_zone", radius)     
+        await update_zone_radius(hass,ZONE_ID, radius)     
         
         _LOGGER.info("Update Anchor Zone service processed.")
 
@@ -122,6 +131,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     
         _LOGGER.info("Drop anchor service processed.")
 
+    
+    # Define a callback to handle when the the UI changes the zone radius
+    @callback
+    async def radius_state_change(entity_id, old_state, new_state):
+        
+        _LOGGER.debug("radius_state_change called with new radius")
+
+        # Log the new value
+        if new_state is not None:
+            _LOGGER.debug(f'New Radius is {new_state.state}')
+            await update_zone_radius(hass,ZONE_ID, new_state.state)     
+        else:
+            _LOGGER.debug(f'{HELPER_FIELD_ID} has no new state')
+            
+            
 
     # async_setup_entry function starts here
     
@@ -137,10 +161,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         hass.data[DOMAIN]["longitude_entity"]
     )
 
+    _LOGGER.debug("Periodic location HA update started.")
+
      # Save a reference to the add_entities callback
     hass.data[DOMAIN]["async_add_entities"] = async_add_entities
 
-    _LOGGER.debug("Periodic location HA update started.")
 
     # Register the services
     hass.services.async_register(DOMAIN, "lift_anchor", handle_lift_anchor)
@@ -148,6 +173,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     hass.services.async_register(DOMAIN, "update_anchor_zone", handle_update_anchor_zone)
 
     _LOGGER.debug("Smart Anchor services registered")
+    
+    # Subscribe to changes of the UI Zone Radius field
+    unsubscribe = async_track_state_change(hass, HELPER_FIELD_ID_ENTITY, radius_state_change)
+    
+    # Store the unsubscribe callback to use it later for cleanup
+    hass.data[f"{unsubscribe}"] = unsubscribe
+
+    _LOGGER.debug("Subscribed to changes of the UI Zone Radius field")
+     
+    
     _LOGGER.debug("Smart Anchor setup completed successfully")
     return True
 
@@ -415,4 +450,7 @@ class BoatTracker(TrackerEntity):
             self._longitude = longitude
             _LOGGER.info(f"{self._name} has moved to a new location.")
             self.async_write_ha_state()
+
+
+
 
