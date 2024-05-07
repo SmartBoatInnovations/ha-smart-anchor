@@ -84,6 +84,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         _LOGGER.info("Update Anchor Zone service processed.")
 
 
+    async def handle_mark_max_radius(call):
+
+        _LOGGER.debug("Mark Pull Radius Service.")
+        
+        # Find current GPS position of boat
+        latitude_entity = hass.data[DOMAIN]["latitude_entity"]
+        longitude_entity = hass.data[DOMAIN]["longitude_entity"]
+
+        latitude_state = hass.states.get(latitude_entity)
+        longitude_state = hass.states.get(longitude_entity)
+        
+        if not latitude_state or not longitude_state or latitude_state.state == 'unavailable' or longitude_state.state == 'unavailable':
+            _LOGGER.warning("Latitude or longitude data is unavailable.")
+            return
+
+        try:
+            boat_latitude = float(latitude_state.state)
+            boat_longitude = float(longitude_state.state)
+        except ValueError as e:
+            _LOGGER.warning(f"Error converting state to float: {e}")
+            return
+
+        zone_latitude, zone_longitude = await get_zone_coordinates(hass)
+        
+        if zone_latitude is None or zone_longitude is None:
+            _LOGGER.warning("Latitude or longitude is None.")
+            return        
+      
+        radius = calculate_zone_radius(boat_latitude, boat_longitude, zone_latitude, zone_longitude)
+ 
+        _LOGGER.debug(f"Radius calculated is {radius}")
+
+        if radius is None or radius == 0:
+            _LOGGER.warning("Radius is None or zero.")
+            return
+        
+        await update_zone_radius(hass,ZONE_ID, radius)                
+    
+        _LOGGER.debug("Mark Pull Radius processed.")
+
+    
+
+
     async def handle_drop_anchor(call):
 
         """Manage the zone by deleting the existing one and optionally creating a new one."""
@@ -171,6 +214,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     hass.services.async_register(DOMAIN, "lift_anchor", handle_lift_anchor)
     hass.services.async_register(DOMAIN, "drop_anchor", handle_drop_anchor)
     hass.services.async_register(DOMAIN, "update_anchor_zone", handle_update_anchor_zone)
+    hass.services.async_register(DOMAIN, "mark_max_radius", handle_mark_max_radius)
+    
 
     _LOGGER.debug("Smart Anchor services registered")
     
@@ -221,6 +266,40 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
 
+async def get_zone_coordinates(hass: HomeAssistant) -> tuple:
+    """Retrieve the latitude and longitude of a given zone."""
+
+    zone_entity_id = ZONE_ID
+
+    entity_registry = er.async_get(hass)
+    zone_entity = entity_registry.async_get(zone_entity_id)
+
+    if not zone_entity:
+        _LOGGER.warning(f"Zone with entity_id {zone_entity_id} not found")
+        return (None, None)
+
+    await ensure_zone_collection_loaded(hass)
+
+    # Get the state of the zone
+    zone_state = hass.states.get(zone_entity_id)
+    
+    if zone_state:
+        # Retrieve latitude and longitude from the zone's attributes
+        latitude = zone_state.attributes.get('latitude')
+        longitude = zone_state.attributes.get('longitude')
+
+        if latitude is not None and longitude is not None:
+            _LOGGER.debug(f"The coordinates of the zone '{zone_entity_id}' are {latitude}, {longitude}.")
+            return (latitude, longitude)
+        else:
+            _LOGGER.warning(f"Latitude or longitude attribute not found for the zone '{zone_entity_id}'.")
+            return (None, None)
+    else:
+        _LOGGER.warning(f"Zone state for '{zone_entity_id}' could not be retrieved.")
+        return (None, None)
+    
+    
+    
 async def handle_new_location_data(hass, latitude, longitude):
     """Handle incoming location data by updating or creating a tracker entity."""
     domain_data = hass.data.setdefault('smart_anchor', {})
@@ -250,6 +329,7 @@ def rate_limited_error_log(message):
     if last_error_log_time is None or current_time - last_error_log_time >= ERROR_LOG_THRESHOLD:
         _LOGGER.warning(message)
         last_error_log_time = current_time
+
 
 async def update_ha_location(hass: HomeAssistant, latitude_entity: str, longitude_entity: str):
     """Update Home Assistant's location based on sensor data."""
@@ -353,8 +433,6 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
         
         
 
-
-
 async def delete_zone(hass: HomeAssistant, unique_id: str):
     """Delete a zone from Home Assistant."""
     await ensure_zone_collection_loaded(hass)
@@ -365,6 +443,29 @@ async def delete_zone(hass: HomeAssistant, unique_id: str):
         _LOGGER.info(f"Zone with ID '{unique_id}' deleted successfully.")
     except Exception as e:
         _LOGGER.warning(f"Error deleting zone with ID '{unique_id}': {e}")
+
+
+def calculate_zone_radius(lat1, lon1, lat2, lon2):
+    # Radius of the Earth in meters
+    R = 6378137  
+    
+    # Convert degrees to radians
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
+    
+    # Difference in coordinates
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+    
+    # Haversine formula
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    distance_meters = R * c
+    
+    return distance_meters
 
 
 
