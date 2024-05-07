@@ -200,7 +200,7 @@ async def handle_new_location_data(hass, latitude, longitude):
         else:
             # Entity does not exist, create it and add to Home Assistant
             _LOGGER.debug(f"No existing tracker found. Creating new tracker for {tracker_key}")
-            new_tracker = BoatTracker(tracker_key, "Smart Boat", latitude, longitude)
+            new_tracker = BoatTracker(hass, tracker_key, "Smart Boat", latitude, longitude)
             domain_data['async_add_entities']([new_tracker])
             domain_data[tracker_key] = new_tracker
             _LOGGER.info(f"Created new tracker entity: {tracker_key}")
@@ -317,37 +317,7 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
         _LOGGER.warning(f"Error updating the radius for zone '{entity_id}': {e}")
         
         
-async def update_zone(hass: HomeAssistant, entity_id: str, name: str = None, latitude: float = None, longitude: float = None, radius: float = None, icon: str = None, passive: bool = None):
-    """Update or delete a zone in Home Assistant."""
-    entity_registry = er.async_get(hass)
-    zone_entity = entity_registry.async_get(entity_id)
 
-    if not zone_entity:
-        _LOGGER.warning(f"Zone with entity_id '{entity_id}' not found")
-
-    await ensure_zone_collection_loaded(hass)
-    zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
-
-    zone_info = {}
-    if name is not None:
-        zone_info['name'] = name
-    if latitude is not None:
-        zone_info['latitude'] = latitude
-    if longitude is not None:
-        zone_info['longitude'] = longitude
-    if radius is not None:
-        zone_info['radius'] = radius
-    if icon is not None:
-        zone_info['icon'] = icon
-    if passive is not None:  
-        zone_info['passive'] = passive
-
-
-    try:
-        await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
-        _LOGGER.info(f"Zone '{entity_id}' updated successfully.")
-    except Exception as e:
-        _LOGGER.warning(f"Error updating zone '{entity_id}': {e}")
 
 
 async def delete_zone(hass: HomeAssistant, unique_id: str):
@@ -384,14 +354,16 @@ class BoatTracker(TrackerEntity):
     
     _attr_icon = "mdi:sail-boat"
     
-    def __init__(self, identifier, name, initial_latitude=None, initial_longitude=None):
+    def __init__(self, hass: HomeAssistant, identifier, name, initial_latitude=None, initial_longitude=None):
         """Initialize the custom device tracker."""
+        self.hass = hass
         self.entity_id = f"device_tracker.{identifier}"  
         self._name = name
         self._latitude = initial_latitude
         self._longitude = initial_longitude
-        self._state = None  
+        self._state = self._determine_anchor_state()
 
+        
         _LOGGER.debug(f"Initializing BoatTracker with ID {identifier} name {name} at initial position ({initial_latitude}, {initial_longitude})")
 
     @property
@@ -401,7 +373,7 @@ class BoatTracker(TrackerEntity):
     @property
     def state(self):
         """Return the state of the device tracker."""
-        return self._state or 'not_home'
+        return self._state or 'not_anchored'
     
     @property
     def latitude(self):
@@ -420,10 +392,21 @@ class BoatTracker(TrackerEntity):
         """Disable polling."""
         return False    
 
+    def _determine_anchor_state(self):
+        """Determine the anchored state based on the existence of the anchor zone."""
+        entity_registry = er.async_get(self.hass)
+        zone_entity = entity_registry.async_get('zone.anchor_zone')
+        
+        if not zone_entity:
+            return 'not_anchored'
+        return 'anchored'
+
 
     def update_location(self, latitude, longitude):
         """Update the latitude and longitude of the tracker."""
         _LOGGER.debug(f"Updating location for {self._name} from ({self._latitude}, {self._longitude}) to ({latitude}, {longitude})")
+        
+        self._state = self._determine_anchor_state()
         
         if self._latitude == latitude and self._longitude == longitude:
             _LOGGER.info(f"{self._name} remains at the same location.")
@@ -431,6 +414,5 @@ class BoatTracker(TrackerEntity):
             self._latitude = latitude
             self._longitude = longitude
             _LOGGER.info(f"{self._name} has moved to a new location.")
-            self._state = 'not_home'  
             self.async_write_ha_state()
 
