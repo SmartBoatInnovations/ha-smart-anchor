@@ -24,6 +24,7 @@ last_error_log_time = None
 DOMAIN = "smart_anchor"
 ZONE_ID = "zone.anchor_zone"
 ZONE_NAME = "anchor_zone"
+TRACKER_NAME = "boat_location"
 HELPER_FIELD_ID = "anchor_zone_radius"
 HELPER_FIELD_ID_ENTITY = "number.anchor_zone_radius"
 
@@ -179,6 +180,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             
         except Exception as e:
             _LOGGER.warning(f"Error creating zone: {e}")
+            
+            
+        tracker = hass.data[DOMAIN][TRACKER_NAME]
+        tracker.revaluate_state()
+        _LOGGER.debug(f"Updating status for {TRACKER_NAME}")
             
         # Update the radius helper on the UI
         await update_anchor_zone_radius(hass, radius)            
@@ -348,21 +354,20 @@ async def get_zone_coordinates(hass: HomeAssistant) -> tuple:
 async def handle_new_location_data(hass, latitude, longitude):
     """Handle incoming location data by updating or creating a tracker entity."""
     domain_data = hass.data.setdefault('smart_anchor', {})
-    tracker_key = "boat_location"
 
     try:
-        if tracker_key in domain_data:
+        if TRACKER_NAME in domain_data:
             # The entity exists, update its location
-            tracker = domain_data[tracker_key]
-            _LOGGER.debug(f"Updating location for {tracker_key} to latitude={latitude}, longitude={longitude}")
+            tracker = domain_data[TRACKER_NAME]
+            _LOGGER.debug(f"Updating location for {TRACKER_NAME} to latitude={latitude}, longitude={longitude}")
             tracker.update_location(latitude, longitude)
         else:
             # Entity does not exist, create it and add to Home Assistant
-            _LOGGER.debug(f"No existing tracker found. Creating new tracker for {tracker_key}")
-            new_tracker = BoatTracker(hass, tracker_key, "Smart Boat", latitude, longitude)
+            _LOGGER.debug(f"No existing tracker found. Creating new tracker for {TRACKER_NAME}")
+            new_tracker = BoatTracker(hass, TRACKER_NAME, "Smart Boat", latitude, longitude)
             domain_data['async_add_entities']([new_tracker])
-            domain_data[tracker_key] = new_tracker
-            _LOGGER.info(f"Created new tracker entity: {tracker_key}")
+            domain_data[TRACKER_NAME] = new_tracker
+            _LOGGER.info(f"Created new tracker entity: {TRACKER_NAME}")
     except Exception as e:
         _LOGGER.warning(f"Failed to update or create boat location tracker: {str(e)}")
         
@@ -576,6 +581,8 @@ class BoatTracker(TrackerEntity):
         """Disable polling."""
         return False    
 
+
+
     def _determine_anchor_state(self):
         """Determine the anchored state based on the existence of the anchor zone."""
         entity_registry = er.async_get(self.hass)
@@ -584,6 +591,15 @@ class BoatTracker(TrackerEntity):
         if not zone_entity:
             return 'not_anchored'
         return 'anchored'
+
+
+    def revaluate_state(self):
+        """Asynchronously re-evaluate the state of the tracker."""
+        self._state = self._determine_anchor_state()
+        self.async_write_ha_state()
+
+        _LOGGER.debug(f"State re-evaluated for {self._name} to {self._state}")
+
 
 
     def update_location(self, latitude, longitude):
