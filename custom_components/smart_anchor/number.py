@@ -43,6 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     return True
 
 
+
+
 async def find_zone_radius(hass: HomeAssistant):
       
     zone_entity_id = ZONE_ID
@@ -115,4 +117,3 @@ class InputNumber(NumberEntity):
     @property
     def native_unit_of_measurement(self):
         return self._attr_native_unit_of_measurement
-

@@ -14,7 +14,6 @@ from homeassistant.helpers.event import async_track_state_change
 
 
 
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -63,8 +62,12 @@ async def delete_anchor_zone(hass: HomeAssistant):
         _LOGGER.debug("No existing zone found to delete.")
 
 
+
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     
+        
     async def handle_lift_anchor(call):
         """Handle the lift_anchor service call."""
         _LOGGER.debug("Lift Anchor Service.")
@@ -119,8 +122,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         if radius is None or radius == 0:
             _LOGGER.warning("Radius is None or zero.")
             return
-        
-        await update_zone_radius(hass,ZONE_ID, radius)                
+ 
+        # Update the Anchor Zone with th e new radius
+        await update_zone_radius(hass,ZONE_ID, radius)    
+
+
+        # Update the radius helper on the UI
+        await update_anchor_zone_radius(hass, radius)            
+            
     
         _LOGGER.debug("Mark Pull Radius processed.")
 
@@ -171,15 +180,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         except Exception as e:
             _LOGGER.warning(f"Error creating zone: {e}")
             
+        # Update the radius helper on the UI
+        await update_anchor_zone_radius(hass, radius)            
     
         _LOGGER.info("Drop anchor service processed.")
 
     
     # Define a callback to handle when the the UI changes the zone radius
     @callback
-    async def radius_state_change(entity_id, old_state, new_state):
+    async def ui_radius_change(entity_id, old_state, new_state):
         
-        _LOGGER.debug("radius_state_change called with new radius")
+        _LOGGER.debug("ui_radius_change called with new radius")
 
         # Log the new value
         if new_state is not None:
@@ -188,7 +199,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         else:
             _LOGGER.debug(f'{HELPER_FIELD_ID} has no new state')
             
+  
+    # Define a callback to handle when the the Zone change
+    @callback
+    async def zone_radius_change(entity_id, old_state, new_state):
+        """Handle changes specifically to the radius of the zone."""
+        if new_state is None:
+            _LOGGER.debug("Zone entity has been removed.")
+            return
+    
+        if old_state is None:
+            _LOGGER.debug("Zone entity has been added.")
+            return
+    
+        old_radius = old_state.attributes.get('radius')
+        new_radius = new_state.attributes.get('radius')
+    
+        if old_radius != new_radius:
+            _LOGGER.info(f"Zone radius changed from {old_radius} to {new_radius}")
             
+            # Update the radius helper on the UI
+            await update_anchor_zone_radius(hass, new_radius)            
+
 
     # async_setup_entry function starts here
     
@@ -220,13 +252,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     _LOGGER.debug("Smart Anchor services registered")
     
     # Subscribe to changes of the UI Zone Radius field
-    unsubscribe = async_track_state_change(hass, HELPER_FIELD_ID_ENTITY, radius_state_change)
-    
+    unsubscribe = async_track_state_change(hass, HELPER_FIELD_ID_ENTITY, ui_radius_change)
+
     # Store the unsubscribe callback to use it later for cleanup
     hass.data[f"{unsubscribe}"] = unsubscribe
 
     _LOGGER.debug("Subscribed to changes of the UI Zone Radius field")
      
+    
+    # Subscribe to when the zone chnages
+    async_track_state_change(hass, ZONE_ID, zone_radius_change)
+
     
     _LOGGER.debug("Smart Anchor setup completed successfully")
     return True
@@ -264,6 +300,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as e:
         _LOGGER.error(f"Failed to unload the integration: {str(e)}")
         return False
+
+async def update_anchor_zone_radius(hass: HomeAssistant, radius):
+    """Update the radius of the anchor zone."""
+    try:
+        input_number = hass.data[DOMAIN][HELPER_FIELD_ID]
+        await input_number.async_set_native_value(radius)
+        _LOGGER.info(f"Anchor zone radius updated to {radius}")
+    except KeyError:
+        _LOGGER.error("Anchor zone radius entity is not available in hass.data")
 
 
 async def get_zone_coordinates(hass: HomeAssistant) -> tuple:
@@ -465,7 +510,10 @@ def calculate_zone_radius(lat1, lon1, lat2, lon2):
     
     distance_meters = R * c
     
-    return distance_meters
+    # Round up to the nearest whole meter
+    rounded_distance = math.ceil(distance_meters)
+
+    return rounded_distance
 
 
 
