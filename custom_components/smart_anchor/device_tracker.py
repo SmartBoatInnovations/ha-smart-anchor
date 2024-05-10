@@ -68,6 +68,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
         # await delete_anchor_zone(hass) 
         await update_zone_passive(hass,ZONE_ID, True)     
+        
+        tracker = hass.data[DOMAIN][TRACKER_NAME]
+        tracker.revaluate_state()
+        _LOGGER.debug(f"Updating status for {TRACKER_NAME}")
+
         _LOGGER.info("Lift anchor service processed.")
 
 
@@ -604,12 +609,13 @@ class BoatTracker(TrackerEntity):
 
 
     def _determine_anchor_state(self):
-        """Determine the anchored state based on the existence of the anchor zone."""
-        entity_registry = er.async_get(self.hass)
-        zone_entity = entity_registry.async_get('zone.anchor_zone')
-        
-        if not zone_entity:
+        """Determine the anchored state based on the existence of the anchor zone and its passive attribute."""
+        zone_state = self.hass.states.get('zone.anchor_zone')
+    
+        if not zone_state:
             return 'not_anchored'
+        elif zone_state.attributes.get('passive', False):
+            return 'not_anchored'  # Consider as not anchored if the zone is passive
         return 'anchored'
 
 
@@ -627,6 +633,11 @@ class BoatTracker(TrackerEntity):
         _LOGGER.debug(f"Updating location for {self._name} from ({self._latitude}, {self._longitude}) to ({latitude}, {longitude})")
         
         self._state = self._determine_anchor_state()
+        
+        self.async_write_ha_state()
+
+        _LOGGER.debug(f"State re-evaluated for {self._name} to {self._state}")
+
         
         if self._latitude == latitude and self._longitude == longitude:
             _LOGGER.info(f"{self._name} remains at the same location.")
