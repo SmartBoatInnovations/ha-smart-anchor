@@ -1,4 +1,5 @@
-# custom_components/smart_anchor/config_flow.py
+"""Smart Boat Anchor Integration. config_flow.py"""
+
 import voluptuous as vol
 import logging
 

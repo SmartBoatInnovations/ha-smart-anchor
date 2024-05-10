@@ -1,4 +1,5 @@
 """Smart Boat Anchor Integration. init.py"""
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 import logging

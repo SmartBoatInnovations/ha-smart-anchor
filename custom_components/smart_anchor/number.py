@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.number import NumberEntity
 from homeassistant.helpers import entity_registry as er
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, ZONE_ID, HELPER_FIELD_ID, HELPER_FIELD_NAME
 
@@ -91,10 +92,17 @@ class InputNumber(NumberEntity):
     def native_value(self):      
         return int(self._attr_native_value)
 
-    async def async_set_native_value(self, value):        
+
+    async def async_set_native_value(self, value):
+        if value is None or not (self._attr_native_min_value <= int(value) <= self._attr_native_max_value):
+            # Log the error
+            _LOGGER.error(f"Invalid input: {value}. Value must be between {self._attr_native_min_value} and {self._attr_native_max_value}.")
+            # Raise HomeAssistantError
+            raise HomeAssistantError(f"Invalid input: {value}. Value must be between {self._attr_native_min_value} and {self._attr_native_max_value}.")
+        
         self._attr_native_value = int(value)
         self.async_write_ha_state()
-
+        
     @property
     def native_min_value(self):        
         return self._attr_native_min_value

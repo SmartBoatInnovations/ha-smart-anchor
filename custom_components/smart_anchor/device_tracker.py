@@ -11,6 +11,8 @@ from homeassistant.components.device_tracker.config_entry import SourceType, Tra
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.debounce import Debouncer
+from datetime import timedelta
 
 
 from .const import DOMAIN, ZONE_ID, ZONE_NAME, TRACKER_NAME, HELPER_FIELD_ID, HELPER_FIELD_ID_ENTITY
@@ -177,10 +179,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         await delete_anchor_zone(hass)     
         
         try:
-            _LOGGER.info(f"Call create zone with (Lat {latitude}, Lon {longitude}, heading {heading}, distance to bow {distance_to_bow}) with radius {radius} meters.")
+            _LOGGER.debug(f"Call create zone with (Lat {latitude}, Lon {longitude}, heading {heading}, distance to bow {distance_to_bow}) with radius {radius} meters.")
 
             await create_zone(hass, "Anchor Zone", latitude, longitude, radius, heading, distance_to_bow)
-            _LOGGER.info(f"Anchor zone set at (Lat {latitude}, Lon {longitude}, heading {heading}, distance to bow {distance_to_bow}) with radius {radius} meters.")
+            _LOGGER.debug(f"Anchor zone set at (Lat {latitude}, Lon {longitude}, heading {heading}, distance to bow {distance_to_bow}) with radius {radius} meters.")
             
         except Exception as e:
             _LOGGER.warning(f"Error creating zone: {e}")
@@ -195,20 +197,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     
         _LOGGER.info("Drop anchor service processed.")
 
-    
-    # Define a callback to handle when the the UI changes the zone radius
-    @callback
-    async def ui_radius_change(entity_id, old_state, new_state):
-        
-        _LOGGER.debug("ui_radius_change called with new radius")
 
-        # Log the new value
+
+    class Throttle:
+        def __init__(self, min_delay_seconds):
+            self.min_delay = timedelta(seconds=min_delay_seconds)
+            self.last_called = datetime.min
+    
+        def __call__(self, func):
+            async def wrapper(*args, **kwargs):
+                now = datetime.now()
+                if now - self.last_called >= self.min_delay:
+                    self.last_called = now
+                    return await func(*args, **kwargs)
+                else:
+                    _LOGGER.debug("Call skipped due to throttling.")
+            return wrapper
+    
+    # Initialize a Throttle instance with a 10-second minimum delay
+    throttle = Throttle(10)
+    
+    @callback
+    @throttle
+    async def ui_radius_change(entity_id, old_state, new_state):
         if new_state is not None:
-            _LOGGER.debug(f'New Radius is {new_state.state}')
-            await update_zone_radius(hass,ZONE_ID, new_state.state)     
+            _LOGGER.debug(f'ui_radius_change called with new radius: {new_state.state}')
+            await update_zone_radius(hass, ZONE_ID, new_state.state)
         else:
             _LOGGER.debug(f'{HELPER_FIELD_ID} has no new state')
-            
+  
+    
   
     # Define a callback to handle when the the Zone change
     @callback
@@ -226,7 +244,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         new_radius = new_state.attributes.get('radius')
     
         if old_radius != new_radius:
-            _LOGGER.info(f"Zone radius changed from {old_radius} to {new_radius}")
+            _LOGGER.debug(f"Zone radius changed from {old_radius} to {new_radius}")
             
             # Update the radius helper on the UI
             await update_anchor_zone_radius(hass, new_radius)            
@@ -316,7 +334,7 @@ async def update_anchor_zone_radius(hass: HomeAssistant, radius):
     try:
         input_number = hass.data[DOMAIN][HELPER_FIELD_ID]
         await input_number.async_set_native_value(radius)
-        _LOGGER.info(f"Anchor zone radius updated to {radius}")
+        _LOGGER.debug(f"Anchor zone radius updated to {radius}")
     except KeyError:
         _LOGGER.error("Anchor zone radius entity is not available in hass.data")
 
@@ -406,7 +424,7 @@ async def update_ha_location(hass: HomeAssistant, latitude_entity: str, longitud
         'latitude': latitude,
         'longitude': longitude
     })
-    _LOGGER.info(f"Home Assistant location updated to Latitude: {latitude}, Longitude: {longitude}")
+    _LOGGER.debug(f"Home Assistant location updated to Latitude: {latitude}, Longitude: {longitude}")
     
     # Update the boat_location tracker
     await handle_new_location_data(hass, latitude, longitude)
@@ -482,7 +500,7 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
 
     try:
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
-        _LOGGER.info(f"Zone '{entity_id}' updated successfully with new radius {new_radius}.")
+        _LOGGER.debug(f"Zone '{entity_id}' updated successfully with new radius {new_radius}.")
     except Exception as e:
         _LOGGER.warning(f"Error updating the radius for zone '{entity_id}': {e}")
         
@@ -504,7 +522,7 @@ async def update_zone_passive(hass: HomeAssistant, entity_id: str, new_passive: 
 
     try:
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
-        _LOGGER.info(f"Zone '{entity_id}' updated successfully with new passive state: {new_passive}.")
+        _LOGGER.debug(f"Zone '{entity_id}' updated successfully with new passive state: {new_passive}.")
     except Exception as e:
         _LOGGER.warning(f"Error updating the passive state for zone '{entity_id}': {e}")
         
@@ -516,7 +534,7 @@ async def delete_zone(hass: HomeAssistant, unique_id: str):
 
     try:
         await zone_collection.async_delete_item(unique_id)
-        _LOGGER.info(f"Zone with ID '{unique_id}' deleted successfully.")
+        _LOGGER.debug(f"Zone with ID '{unique_id}' deleted successfully.")
     except Exception as e:
         _LOGGER.warning(f"Error deleting zone with ID '{unique_id}': {e}")
 
@@ -640,11 +658,11 @@ class BoatTracker(TrackerEntity):
 
         
         if self._latitude == latitude and self._longitude == longitude:
-            _LOGGER.info(f"{self._name} remains at the same location.")
+            _LOGGER.debug(f"{self._name} remains at the same location.")
         else:
             self._latitude = latitude
             self._longitude = longitude
-            _LOGGER.info(f"{self._name} has moved to a new location.")
+            _LOGGER.debug(f"{self._name} has moved to a new location.")
             self.async_write_ha_state()
 
 
