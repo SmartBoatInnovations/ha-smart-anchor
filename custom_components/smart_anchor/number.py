@@ -82,7 +82,7 @@ class InputNumber(NumberEntity):
         self._attr_native_value = int(initial_value)
         self._attr_editable = True
         self._attr_mode = 'box'
-        self._attr_native_min_value = 0
+        self._attr_native_min_value = 1
         self._attr_native_max_value = 100
         self._attr_native_step = 1
         self._attr_device_class = "distance"  
