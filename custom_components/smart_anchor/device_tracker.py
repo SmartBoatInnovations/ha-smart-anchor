@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change
 
 
+from .const import DOMAIN, ZONE_ID, ZONE_NAME, TRACKER_NAME, HELPER_FIELD_ID, HELPER_FIELD_ID_ENTITY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,14 +21,6 @@ _LOGGER = logging.getLogger(__name__)
 # Set up a time threshold for logging the same error 
 ERROR_LOG_THRESHOLD = timedelta(minutes=10)
 last_error_log_time = None
-
-DOMAIN = "smart_anchor"
-ZONE_ID = "zone.anchor_zone"
-ZONE_NAME = "anchor_zone"
-TRACKER_NAME = "boat_location"
-HELPER_FIELD_ID = "anchor_zone_radius"
-HELPER_FIELD_ID_ENTITY = "number.anchor_zone_radius"
-
 
 
 
@@ -73,7 +66,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         """Handle the lift_anchor service call."""
         _LOGGER.debug("Lift Anchor Service.")
 
-        await delete_anchor_zone(hass)     
+        # await delete_anchor_zone(hass) 
+        await update_zone_passive(hass,ZONE_ID, True)     
         _LOGGER.info("Lift anchor service processed.")
 
 
@@ -142,9 +136,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         """Manage the zone by deleting the existing one and optionally creating a new one."""
         _LOGGER.debug("Drop Anchor Service.")
         
-        # Use the passed 'radius' or default to 'default_radius' if not provided
-        default_radius = hass.data[DOMAIN]["default_radius"]
-        radius = call.data.get('radius', default_radius)
+        # Use the passed 'radius' else use the UI inout radius else use 'default_radius' 
+        input_number = hass.data[DOMAIN][HELPER_FIELD_ID]
+        if input_number and input_number.native_value != 0:
+            current_radius = input_number.native_value
+        else:    
+            current_radius = hass.data[DOMAIN]["default_radius"]
+            
+        radius = call.data.get('radius', current_radius)
         
         latitude_entity = hass.data[DOMAIN]["latitude_entity"]
         longitude_entity = hass.data[DOMAIN]["longitude_entity"]
@@ -326,7 +325,7 @@ async def get_zone_coordinates(hass: HomeAssistant) -> tuple:
     zone_entity = entity_registry.async_get(zone_entity_id)
 
     if not zone_entity:
-        _LOGGER.warning(f"Zone with entity_id {zone_entity_id} not found")
+        _LOGGER.warning(f"In get_zone_coordinates - Zone with entity_id {zone_entity_id} not found")
         return (None, None)
 
     await ensure_zone_collection_loaded(hass)
@@ -467,7 +466,8 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
     zone_entity = entity_registry.async_get(entity_id)
 
     if not zone_entity:
-        _LOGGER.warning(f"Zone with entity_id '{entity_id}' not found")
+        _LOGGER.debug(f"In update_zone_radius - Zone with entity_id '{entity_id}' not found")
+        return
 
     await ensure_zone_collection_loaded(hass)
     zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
@@ -481,6 +481,27 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
     except Exception as e:
         _LOGGER.warning(f"Error updating the radius for zone '{entity_id}': {e}")
         
+
+async def update_zone_passive(hass: HomeAssistant, entity_id: str, new_passive: bool):
+    """Update the passive attribute of an existing zone in Home Assistant."""
+    entity_registry = er.async_get(hass)
+    zone_entity = entity_registry.async_get(entity_id)
+
+    if not zone_entity:
+        _LOGGER.debug(f"In update_zone_passive - Zone with entity_id '{entity_id}' not found")
+        return
+
+    await ensure_zone_collection_loaded(hass)
+    zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
+
+    # Prepare the update info with the new passive state
+    zone_info = {'passive': new_passive}
+
+    try:
+        await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
+        _LOGGER.info(f"Zone '{entity_id}' updated successfully with new passive state: {new_passive}.")
+    except Exception as e:
+        _LOGGER.warning(f"Error updating the passive state for zone '{entity_id}': {e}")
         
 
 async def delete_zone(hass: HomeAssistant, unique_id: str):
@@ -582,7 +603,6 @@ class BoatTracker(TrackerEntity):
         return False    
 
 
-
     def _determine_anchor_state(self):
         """Determine the anchored state based on the existence of the anchor zone."""
         entity_registry = er.async_get(self.hass)
@@ -615,7 +635,6 @@ class BoatTracker(TrackerEntity):
             self._longitude = longitude
             _LOGGER.info(f"{self._name} has moved to a new location.")
             self.async_write_ha_state()
-
 
 
 

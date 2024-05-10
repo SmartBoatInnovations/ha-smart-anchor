@@ -7,16 +7,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.components.number import NumberEntity
 from homeassistant.helpers import entity_registry as er
 
+from .const import DOMAIN, ZONE_ID, HELPER_FIELD_ID, HELPER_FIELD_NAME
 
 from .device_tracker import ensure_zone_collection_loaded
 
+
 _LOGGER = logging.getLogger(__name__)
-
-DOMAIN = "smart_anchor"
-HELPER_FIELD_ID = "anchor_zone_radius"
-HELPER_FIELD_NAME = "Anchor Zone Radius"
-ZONE_ID = "zone.anchor_zone"
-
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -53,8 +49,9 @@ async def find_zone_radius(hass: HomeAssistant):
     zone_entity = entity_registry.async_get(zone_entity_id)
 
     if not zone_entity:
-        _LOGGER.warning(f"Zone with entity_id {zone_entity_id} not found")
-        return 0
+        default_radius = hass.data[DOMAIN]["default_radius"]
+        _LOGGER.debug(f"Zone with entity_id {zone_entity_id} not found. Using default radius")
+        return default_radius
 
     await ensure_zone_collection_loaded(hass)
        
@@ -76,14 +73,14 @@ async def find_zone_radius(hass: HomeAssistant):
 
 class InputNumber(NumberEntity):
     
-    _attr_icon = "mdi:update"
+    _attr_icon = "mdi:location-exit"
 
     def __init__(self, name, initial_value):        
         self._attr_id = name
         self._attr_name = HELPER_FIELD_NAME
-        self._attr_native_value = initial_value
+        self._attr_native_value = int(initial_value)
         self._attr_editable = True
-        self._attr_mode = 'slider'
+        self._attr_mode = 'box'
         self._attr_native_min_value = 0
         self._attr_native_max_value = 100
         self._attr_native_step = 1
@@ -92,10 +89,10 @@ class InputNumber(NumberEntity):
 
     @property
     def native_value(self):      
-        return self._attr_native_value
+        return int(self._attr_native_value)
 
     async def async_set_native_value(self, value):        
-        self._attr_native_value = value
+        self._attr_native_value = int(value)
         self.async_write_ha_state()
 
     @property
