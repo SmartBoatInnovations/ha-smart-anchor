@@ -74,6 +74,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         tracker.revaluate_state()
         _LOGGER.debug(f"Updating status for {TRACKER_NAME}")
 
+ 
+        # Update the radius helper on the UI
+        default_radius = hass.data[DOMAIN]["default_radius"]
+        await update_anchor_zone_radius(hass, default_radius)            
+
         _LOGGER.info("Lift anchor service processed.")
 
 
@@ -535,7 +540,7 @@ async def update_zone_passive(hass: HomeAssistant, entity_id: str):
 
     try:
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
-        _LOGGER.debug(f"Zone '{entity_id}' updated successfully with new passive state: {new_passive}.")
+        _LOGGER.debug(f"Zone '{entity_id}' updated successfully with  passive state.")
     except Exception as e:
         _LOGGER.warning(f"Error updating the passive state for zone '{entity_id}': {e}")
         
