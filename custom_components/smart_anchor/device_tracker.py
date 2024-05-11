@@ -11,8 +11,7 @@ from homeassistant.components.device_tracker.config_entry import SourceType, Tra
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change
-from homeassistant.helpers.debounce import Debouncer
-from datetime import timedelta
+from homeassistant.exceptions import HomeAssistantError
 
 
 from .const import DOMAIN, ZONE_ID, ZONE_NAME, TRACKER_NAME, HELPER_FIELD_ID, HELPER_FIELD_ID_ENTITY
@@ -220,12 +219,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     @callback
     @throttle
     async def ui_radius_change(entity_id, old_state, new_state):
-        if new_state is not None:
-            _LOGGER.debug(f'ui_radius_change called with new radius: {new_state.state}')
-            await update_zone_radius(hass, ZONE_ID, new_state.state)
-        else:
-            _LOGGER.debug(f'{HELPER_FIELD_ID} has no new state')
-  
+        if new_state is None:
+            _LOGGER.info("No new state provided.")
+            raise HomeAssistantError("No new state provided.")
+    
+        new_radius = int(new_state.state)
+    
+        # Check if the new radius is within the allowed range
+        if not (1 <= new_radius <= 100):
+            _LOGGER.info(f"Invalid radius: {new_radius}. Value must be between 1 and 100.")
+            raise HomeAssistantError(f"Invalid radius: {new_radius}. Value must be between 1 and 100.")
+    
+        # Log and proceed with the update
+        _LOGGER.debug(f'ui_radius_change called with new radius: {new_radius}')
+        await update_zone_radius(hass, ZONE_ID, new_radius)  
     
   
     # Define a callback to handle when the the Zone change
@@ -595,9 +602,14 @@ class BoatTracker(TrackerEntity):
         self._latitude = initial_latitude
         self._longitude = initial_longitude
         self._state = self._determine_anchor_state()
-
+        self._friendly_state = self._calculate_friendly_state()
         
         _LOGGER.debug(f"Initializing BoatTracker with ID {identifier} name {name} at initial position ({initial_latitude}, {initial_longitude})")
+
+    def _calculate_friendly_state(self):
+        """Calculate the friendly name based on the internal state."""
+        return "Anchored" if self._state == "anchored" else "Not Anchored"
+
 
     @property
     def name(self):
@@ -607,7 +619,20 @@ class BoatTracker(TrackerEntity):
     def state(self):
         """Return the state of the device tracker."""
         return self._state or 'not_anchored'
-    
+
+    @property
+    def extra_state_attributes(self):
+        """Return additional state attributes."""
+        return {
+            "friendly_state": self._friendly_state
+        }
+
+        
+    @property
+    def friendly_state(self):
+        """Return a more human-readable state."""
+        return self._calculate_friendly_state()
+
     @property
     def latitude(self):
         return self._latitude
@@ -640,6 +665,7 @@ class BoatTracker(TrackerEntity):
     def revaluate_state(self):
         """Asynchronously re-evaluate the state of the tracker."""
         self._state = self._determine_anchor_state()
+        self._friendly_state = self._calculate_friendly_state()
         self.async_write_ha_state()
 
         _LOGGER.debug(f"State re-evaluated for {self._name} to {self._state}")
@@ -651,6 +677,8 @@ class BoatTracker(TrackerEntity):
         _LOGGER.debug(f"Updating location for {self._name} from ({self._latitude}, {self._longitude}) to ({latitude}, {longitude})")
         
         self._state = self._determine_anchor_state()
+        self._friendly_state = self._calculate_friendly_state()
+
         
         self.async_write_ha_state()
 
