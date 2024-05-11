@@ -68,7 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         _LOGGER.debug("Lift Anchor Service.")
 
         # await delete_anchor_zone(hass) 
-        await update_zone_passive(hass,ZONE_ID, True)     
+        await update_zone_passive(hass,ZONE_ID)     
         
         tracker = hass.data[DOMAIN][TRACKER_NAME]
         tracker.revaluate_state()
@@ -213,8 +213,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                     _LOGGER.debug("Call skipped due to throttling.")
             return wrapper
     
-    # Initialize a Throttle instance with a 10-second minimum delay
-    throttle = Throttle(10)
+    # Initialize a Throttle instance with a 5-second minimum delay
+    throttle = Throttle(5)
     
     @callback
     @throttle
@@ -504,6 +504,8 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
 
     # Prepare the update info with the new radius
     zone_info = {'radius': new_radius}
+    
+    
 
     try:
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
@@ -512,7 +514,7 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
         _LOGGER.warning(f"Error updating the radius for zone '{entity_id}': {e}")
         
 
-async def update_zone_passive(hass: HomeAssistant, entity_id: str, new_passive: bool):
+async def update_zone_passive(hass: HomeAssistant, entity_id: str):
     """Update the passive attribute of an existing zone in Home Assistant."""
     entity_registry = er.async_get(hass)
     zone_entity = entity_registry.async_get(entity_id)
@@ -524,8 +526,12 @@ async def update_zone_passive(hass: HomeAssistant, entity_id: str, new_passive: 
     await ensure_zone_collection_loaded(hass)
     zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
 
-    # Prepare the update info with the new passive state
-    zone_info = {'passive': new_passive}
+    # Prepare the update info with the new passive state   
+    zone_info = {
+    'passive': True,
+    'radius': 0,
+    'icon': "mdi:cancel"
+    }
 
     try:
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
