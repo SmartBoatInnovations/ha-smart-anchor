@@ -534,7 +534,7 @@ async def update_zone_passive(hass: HomeAssistant, entity_id: str):
     # Prepare the update info with the new passive state   
     zone_info = {
     'passive': True,
-    'radius': 0,
+    'radius': 1,
     'icon': "mdi:cancel"
     }
 
