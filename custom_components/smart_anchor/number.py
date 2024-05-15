@@ -40,6 +40,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     return True
 
 
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Handle removal of an entry."""
+    
+    _LOGGER.debug("In async_unload_entry number.py.")
+
+    return True
 
 
 async def find_zone_radius(hass: HomeAssistant):
@@ -60,6 +66,13 @@ async def find_zone_radius(hass: HomeAssistant):
     
     if zone_state:
         radius = zone_state.attributes.get('radius')
+        passive = zone_state.attributes.get('passive')
+        
+        if passive:
+            default_radius = hass.data[DOMAIN]["default_radius"]
+            _LOGGER.debug(f"Zone with entity_id {zone_entity_id} is passive. Using default radius")
+            return default_radius
+
         if radius is not None:
             _LOGGER.debug(f"The radius of the zone '{zone_entity_id}' is currently {radius} meters.")
             return radius

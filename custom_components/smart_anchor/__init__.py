@@ -63,5 +63,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     result = await hass.config_entries.async_forward_entry_unload(entry, "device_tracker")
     _LOGGER.debug("Unload forwarded to device_tracker platform with result: %s", result)
 
+    # Forward the unload to the number platform and await its completion
+    _LOGGER.debug("Forwarding unload to number platform")
+    result = await hass.config_entries.async_forward_entry_unload(entry, "number")
+    _LOGGER.debug("Unload forwarded to number platform with result: %s", result)
+
+
     _LOGGER.debug("Unload for Smart_Anchor integration completed successfully")
     return True

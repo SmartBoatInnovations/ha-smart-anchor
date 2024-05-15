@@ -225,8 +225,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     @throttle
     async def ui_radius_change(entity_id, old_state, new_state):
         if new_state is None:
-            _LOGGER.info("No new state provided.")
-            raise HomeAssistantError("No new state provided.")
+            return
     
         new_radius = int(new_state.state)
     
@@ -505,12 +504,17 @@ async def update_zone_radius(hass: HomeAssistant, entity_id: str, new_radius: fl
         return
 
     await ensure_zone_collection_loaded(hass)
+    
+    # If zone is passive the radius must not be changed
+    zone_state = hass.states.get(entity_id)
+    if zone_state and zone_state.attributes.get('passive'):
+        _LOGGER.debug("In update_zone_radius - Zone is passive not updating radius")
+        return
+ 
     zone_collection: ZoneStorageCollection = hass.data[ZONE_DOMAIN]
 
     # Prepare the update info with the new radius
-    zone_info = {'radius': new_radius}
-    
-    
+    zone_info = {'radius': new_radius}   
 
     try:
         await zone_collection.async_update_item(zone_entity.unique_id, zone_info)
