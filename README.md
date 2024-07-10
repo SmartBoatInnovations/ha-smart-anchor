@@ -10,6 +10,6 @@ My philosophy revolves around utilizing free open systems and affordable sensors
 I invite you to head over there, subscribe to our channel, and join the vibrant community of boating enthusiasts who are exploring the exciting possibilities of affordable technology.
 
 For instructions on using this ha-smart-anchor integration go to https://smartboatinnovations.com/code/smart-anchor-watch
-or watch this video guide: https://youtu.be/t1qDKVBHRrs
+or watch this video guide: https://youtu.be/VT_s4hxUcq0
 
 <a href='https://ko-fi.com/smartboatinnovations' target='_blank'><img height='35' style='border:0px;height:46px;' src='https://az743702.vo.msecnd.net/cdn/kofi3.png?v=0' border='0' alt='Buy Me a Coffee at ko-fi.com' />
