@@ -1,16 +1,3 @@
-"""
-Copyright (c) 2024 Smart Boat Innovations
-
-Version 1.0, 01 June 2024
-
-This file is part of the Smart Boat Innovations software.
-
-Smart Boat Innovations ("Licensor") grants you a limited, non-exclusive, non-transferable, revocable license to load and use this software through Home Assistant Community Store (HACS) for personal, non-commercial use only.
-
-You may not copy, distribute, or modify this file or the accompanying software. The software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software.
-
-See the full license text in the accompanying LICENSE file.
-"""
 """Smart Boat Anchor Integration. device_tracker.py"""
 
 import logging
@@ -19,15 +6,66 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.components.zone import DOMAIN as ZONE_DOMAIN, ZoneStorageCollection
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from homeassistant.components.device_tracker.config_entry import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change
 from homeassistant.exceptions import HomeAssistantError
-
+from homeassistant.helpers.event import async_track_state_change_event
+import requests
+import json
 
 from .const import DOMAIN, ZONE_ID, ZONE_NAME, TRACKER_NAME, HELPER_FIELD_ID, HELPER_FIELD_ID_ENTITY
+
+
+class PositionManager:
+    def __init__(self, max_size=72):
+        self.positions = []
+        self.max_size = max_size
+    
+    def add_position(self, new_position):
+        """
+        Adds a new position. If the list exceeds max_size, it slices by removing every second position.
+        """
+        # Append the new position
+        self.positions.append(new_position)
+        _LOGGER.debug(f"Added position: {new_position}")
+        _LOGGER.debug(f"Current positions (length: {len(self.positions)}): {self.positions}")
+
+        # Slice the list by removing every second position if it exceeds max_size
+        while len(self.positions) > self.max_size:
+            self.positions = self.positions[::2]
+            _LOGGER.debug(f"Sliced positions (length: {len(self.positions)}): {self.positions}")
+
+        return self.positions
+    
+    def empty_positions(self):
+        """
+        Empties the positions list.
+        """
+        self.positions = []
+
+    def create_json_payload(self, boat_api_key):
+        """
+        Creates JSON payload for the positions.
+        """
+        track_str = json.dumps(self.positions)
+        return {
+            "boatApiKey": boat_api_key,
+            "track": track_str
+        }
+    
+position_manager = PositionManager(max_size=72)
+
+last_NFL_api_call_time = datetime.now(timezone.utc).timestamp() - 600  # in seconds
+NFL_API_CALL_INTERVAL = 600  # in seconds
+NFL_API_URL = "https://www.noforeignland.com/home/api/v1/boat/tracking/track"
+NFL_API_HEADERS = {
+    'X-NFL-API-Key': 'c37fb59f-8978-4436-9299-eec6bdfce4ae'
+}
+NFL_BOAT_API_KEY = 'c87708bc-7503-4500-8750-94679aafd713'
+
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +86,8 @@ def setup_or_update_config(hass: HomeAssistant, entry: ConfigEntry):
         "longitude_entity": entry.data["longitude_entity"],
         "default_radius": entry.data["default_radius"],
         "heading_entity": entry.data.get("heading_entity"),
-        "distance_to_bow": entry.data.get("distance_to_bow")
+        "distance_to_bow": entry.data.get("distance_to_bow"),
+        "nfl_api_key": entry.data.get("nfl_api_key")
     }
 
     _LOGGER.debug(f"Smart Anchor configuration stored: {hass.data[DOMAIN]}")
@@ -236,7 +275,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     
     @callback
     @throttle
-    async def ui_radius_change(entity_id, old_state, new_state):
+    async def ui_radius_change(event):
+        
+        """Handle changes to the UI radius field."""
+        new_state = event.data.get('new_state')
+        
         if new_state is None:
             return
     
@@ -254,7 +297,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
   
     # Define a callback to handle when the the Zone change
     @callback
-    async def zone_radius_change(entity_id, old_state, new_state):
+    async def zone_radius_change(event):
+        
+        new_state = event.data.get('new_state')
+        old_state = event.data.get('old_state')
+
         """Handle changes specifically to the radius of the zone."""
         if new_state is None:
             _LOGGER.debug("Zone entity has been removed.")
@@ -292,6 +339,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
      # Save a reference to the add_entities callback
     hass.data[DOMAIN]["async_add_entities"] = async_add_entities
+    _LOGGER.debug(f"async_add_entities stored in domain data: {async_add_entities}")
 
 
     # Register the services
@@ -304,7 +352,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     _LOGGER.debug("Smart Anchor services registered")
     
     # Subscribe to changes of the UI Zone Radius field
-    unsubscribe = async_track_state_change(hass, HELPER_FIELD_ID_ENTITY, ui_radius_change)
+    unsubscribe = async_track_state_change_event(hass, [HELPER_FIELD_ID_ENTITY], ui_radius_change)
+
 
     # Store the unsubscribe callback to use it later for cleanup
     hass.data[f"{unsubscribe}"] = unsubscribe
@@ -313,7 +362,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
      
     
     # Subscribe to when the zone chnages
-    async_track_state_change(hass, ZONE_ID, zone_radius_change)
+    async_track_state_change_event(hass, [ZONE_ID], zone_radius_change)
+
 
     
     _LOGGER.debug("Smart Anchor setup completed successfully")
@@ -352,6 +402,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as e:
         _LOGGER.error(f"Failed to unload the integration: {str(e)}")
         return False
+
 
 async def update_anchor_zone_radius(hass: HomeAssistant, radius):
     """Update the radius of the anchor zone."""
@@ -396,7 +447,79 @@ async def get_zone_coordinates(hass: HomeAssistant) -> tuple:
         return (None, None)
     
     
+
+async def call_NFL_api(hass: HomeAssistant, latitude: float, longitude: float):
+    """Call the external REST API to update the boat's position."""
+    global last_NFL_api_call_time
+
+    _LOGGER.debug("Starting NFL API call process")
     
+    # Get the boat NFL API key
+    nfl_api_key = hass.data[DOMAIN].get("nfl_api_key")        
+    
+    # Check if nfl_api_key exists
+    if not nfl_api_key:
+        _LOGGER.debug("NFL API key not found. Exiting NFL API call process.")
+        return
+
+    # Check if enough time has passed since the last API call
+    current_time_utc = datetime.now(timezone.utc).timestamp()
+    if current_time_utc - last_NFL_api_call_time < NFL_API_CALL_INTERVAL:
+        _LOGGER.debug("Skipping NFL API call, waiting for the next interval.")
+        return
+
+    current_time_millis = int(current_time_utc * 1000)
+    
+    # Add the new position to the position manager
+    position_manager.add_position([current_time_millis, latitude, longitude])
+    
+
+    # Create the JSON payload with all positions
+    json_payload = position_manager.create_json_payload(nfl_api_key)
+
+    _LOGGER.debug(f"Prepared data for NFL API call: {json_payload}")
+    
+    def post_to_api():
+        """Function to perform the blocking API call."""
+        _LOGGER.debug(f"Posting to NFL API at URL: {NFL_API_URL} with headers: {NFL_API_HEADERS} and data: {json_payload}")
+        response = requests.post(NFL_API_URL, headers=NFL_API_HEADERS, data=json_payload)
+        _LOGGER.debug(f"HTTP Status: {response.status_code}")
+        _LOGGER.debug(f"Response Headers: {response.headers}")
+        _LOGGER.debug(f"Response Content: {response.content}")
+        return response
+
+    try:
+        _LOGGER.debug("Calling NFL API...")
+        
+        last_NFL_api_call_time = current_time_utc  # Update the timestamp before an API call
+
+        response = await hass.async_add_executor_job(post_to_api)
+        _LOGGER.debug(f"NFL API response received: {response.status_code}, {response.text}")
+        
+
+        if response.status_code == 200:
+            _LOGGER.debug("NFL Track uploaded successfully.")
+            position_manager.empty_positions()  # Clear positions after a successful send
+            
+            # Parse and inspect the response content
+            response_data = response.json()
+            _LOGGER.debug(f"Response JSON: {response_data}")
+
+            if response_data.get("status") == "ok":
+                _LOGGER.debug("API reported status ok.")
+            else:
+                _LOGGER.warning(f"Unexpected API response status: {response_data.get('status')}")
+
+        else:
+            _LOGGER.info(f"Failed to upload NFL track: {response.text}")
+    except requests.ConnectionError:
+        _LOGGER.debug("No internet connection. Failed to upload NFL track.")
+    except Exception as e:
+        _LOGGER.info(f"Error calling NFL API: {e}")
+     
+
+
+        
 async def handle_new_location_data(hass, latitude, longitude):
     """Handle incoming location data by updating or creating a tracker entity."""
     domain_data = hass.data.setdefault('smart_anchor', {})
@@ -411,9 +534,15 @@ async def handle_new_location_data(hass, latitude, longitude):
             # Entity does not exist, create it and add to Home Assistant
             _LOGGER.debug(f"No existing tracker found. Creating new tracker for {TRACKER_NAME}")
             new_tracker = BoatTracker(hass, TRACKER_NAME, "Smart Boat", latitude, longitude)
-            domain_data['async_add_entities']([new_tracker])
-            domain_data[TRACKER_NAME] = new_tracker
-            _LOGGER.info(f"Created new tracker entity: {TRACKER_NAME}")
+            
+            if 'async_add_entities' not in domain_data:
+               _LOGGER.error("async_add_entities is not available in domain_data")
+            else:
+               _LOGGER.debug(f"Adding new tracker: {new_tracker}")
+               domain_data['async_add_entities']([new_tracker])
+               domain_data[TRACKER_NAME] = new_tracker
+               _LOGGER.info(f"Created new tracker entity: {TRACKER_NAME}")
+           
     except Exception as e:
         _LOGGER.warning(f"Failed to update or create boat location tracker: {str(e)}")
         
@@ -452,6 +581,12 @@ async def update_ha_location(hass: HomeAssistant, latitude_entity: str, longitud
     
     # Update the boat_location tracker
     await handle_new_location_data(hass, latitude, longitude)
+
+    # Call the NFL API 
+    try:
+        await call_NFL_api(hass, latitude, longitude)
+    except Exception as e:
+        _LOGGER.debug(f"Optional NFL API call failed, maybe no internet: {e}")
 
 
 async def setup_periodic_location_updates(hass: HomeAssistant, latitude_entity: str, longitude_entity: str):

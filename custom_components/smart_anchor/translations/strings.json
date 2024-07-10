@@ -9,7 +9,8 @@
                     "longitude_entity": "Longitude Sensor Entity",
                     "default_radius": "Default Radius (meters)",
                     "heading_entity": "Heading Sensor Entity (optional)",
-                    "distance_to_bow": "Distance to Bow (meters) (optional)"
+                    "distance_to_bow": "Distance to Bow (meters) (optional)",
+                    "nfl_api_key": "NFL Tracking API Key (optional)"
                 }
             }
         },
@@ -29,7 +30,8 @@
                     "longitude_entity": "Longitude Sensor Entity",
                     "default_radius": "Default Radius (meters)",
                     "heading_entity": "Heading Sensor Entity (optional)",
-                    "distance_to_bow": "Distance to Bow (meters) (optional)"
+                    "distance_to_bow": "Distance to Bow (meters) (optional)",
+                    "nfl_api_key": "NFL Tracking API Key (optional)"
                 }
             }
         }

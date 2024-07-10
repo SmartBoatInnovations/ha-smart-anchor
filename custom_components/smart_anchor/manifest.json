@@ -1,9 +1,9 @@
 {
   "domain": "smart_anchor",
   "name": "Smart Boat Anchor",
-  "documentation": "https://www.smartboatinnovations.com/smart0183tcp",
+  "documentation": "https://www.smartboatinnovations.com/code/smart-anchor-watch",
   "dependencies": ["zone"],
   "codeowners": [],
-  "version": "0.1.0",
+  "version": "0.1.1",
   "config_flow": true
 }
