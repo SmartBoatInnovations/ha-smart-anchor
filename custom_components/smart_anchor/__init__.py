@@ -35,13 +35,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = entry.data
     _LOGGER.debug("Configuration entry saved: %s", entry.data)
 
-    # Forward the setup to the device_tracker platform
-    _LOGGER.debug("Forwarding setup to device_tracker platform")
-    await hass.config_entries.async_forward_entry_setup(entry, "device_tracker")
-
-    # Forward the setup to the number platform
-    _LOGGER.debug("Forwarding setup to number platform")
-    await hass.config_entries.async_forward_entry_setup(entry, "number")
+   
+    # Forward the setup to both device_tracker and number platforms
+    platforms = ["device_tracker", "number"]
+    _LOGGER.debug("Forwarding setup to platforms: %s", platforms)
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
     _LOGGER.debug("Setup for Smart_Anchor integration completed successfully")
     return True
@@ -54,15 +52,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.debug("Entry removed from domain data container")
 
-    # Forward the unload to the device_tracker platform and await its completion
-    _LOGGER.debug("Forwarding unload to device_tracker platform")
-    result = await hass.config_entries.async_forward_entry_unload(entry, "device_tracker")
-    _LOGGER.debug("Unload forwarded to device_tracker platform with result: %s", result)
-
-    # Forward the unload to the number platform and await its completion
-    _LOGGER.debug("Forwarding unload to number platform")
-    result = await hass.config_entries.async_forward_entry_unload(entry, "number")
-    _LOGGER.debug("Unload forwarded to number platform with result: %s", result)
+    # Forward the unload to both platforms in one go
+    platforms = ["device_tracker", "number"]
+    _LOGGER.debug("Forwarding unload to platforms: %s", platforms)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
+    _LOGGER.debug("Unload forwarded with result: %s", unload_ok)
 
 
     _LOGGER.debug("Unload for Smart_Anchor integration completed successfully")
