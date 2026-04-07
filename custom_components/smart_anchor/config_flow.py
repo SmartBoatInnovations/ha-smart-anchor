@@ -63,46 +63,61 @@ class SmartAnchorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return SmartAnchorOptionsFlow()
 
 class SmartAnchorOptionsFlow(config_entries.OptionsFlow):
-
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
             _LOGGER.debug("Processing user input")
- 
             _LOGGER.debug("Received user_input: %s", user_input)
 
             if "nfl_api_key" not in user_input or user_input.get("nfl_api_key") == "":
                 _LOGGER.debug("User_input for nfl_api_key is EMPTY or NOT PRESENT")
                 user_input["nfl_api_key"] = None
-    
-    
+
             new_data = {**self.config_entry.data, **user_input}
             _LOGGER.debug("New data after processing user_input: %s", new_data)
-    
-            # Update the config entry with new data.
+
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
-                data=new_data
+                data=new_data,
             )
-            
-            
-            # Trigger a reload of the entry to apply the changes
+
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
 
             _LOGGER.debug("data updated with user input. New data: %s", new_data)
-            
-            return self.async_create_entry(title="", data=None)
 
+            return self.async_create_entry(title="", data={})
 
         schema = vol.Schema({
-            vol.Required("latitude_entity", default=self.config_entry.data.get("latitude_entity")): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-            vol.Required("longitude_entity", default=self.config_entry.data.get("longitude_entity")): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-            vol.Required("default_radius", default=self.config_entry.data.get("default_radius")): int,
-            vol.Optional("heading_entity", default=self.config_entry.data.get("heading_entity")): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-            vol.Optional("distance_to_bow", default=self.config_entry.data.get("distance_to_bow")): int,
-            vol.Optional("nfl_api_key", description={"suggested_value": self.config_entry.data.get("nfl_api_key")}): str,
-
-
+            vol.Required(
+                "latitude_entity",
+                default=self.config_entry.data.get("latitude_entity")
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Required(
+                "longitude_entity",
+                default=self.config_entry.data.get("longitude_entity")
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Required(
+                "default_radius",
+                default=self.config_entry.data.get("default_radius", 50)
+            ): int,
+            vol.Optional(
+                "heading_entity",
+                default=self.config_entry.data.get("heading_entity")
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional(
+                "distance_to_bow",
+                default=self.config_entry.data.get("distance_to_bow")
+            ): int,
+            vol.Optional(
+                "nfl_api_key",
+                description={"suggested_value": self.config_entry.data.get("nfl_api_key")}
+            ): str,
         })
 
         return self.async_show_form(step_id="init", data_schema=schema)
